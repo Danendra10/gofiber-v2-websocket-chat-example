@@ -6,14 +6,40 @@
 <head>
     <title>Chat Example</title>
     <script type="text/javascript">
+
+        var user = "";
+
+        function handleLogin() {
+            var username = document.getElementById("username").value;
+            user = username;
+            var login = document.getElementById("login");
+            var chat = document.getElementById("chat");
+            login.style.display = "none";
+            chat.style.display = "block";
+        }
+
         window.onload = function () {
+            var login = document.getElementById("login");
+            var chat = document.getElementById("chat");
+
+            if (user === "") {
+                login.style.display = "block";
+                chat.style.display = "none";
+            }
+            else {
+                login.style.display = "none";
+                chat.style.display = "block";
+            }
             var conn;
             var msg = document.getElementById("msg");
             var log = document.getElementById("log");
 
             function appendLog(item) {
                 var doScroll = log.scrollTop > log.scrollHeight - log.clientHeight - 1;
-                log.appendChild(item);
+                var message = item.innerText; // Extract text content
+                var messageElement = document.createElement("div");
+                messageElement.innerText = message;
+                log.appendChild(messageElement);
                 if (doScroll) {
                     log.scrollTop = log.scrollHeight - log.clientHeight;
                 }
@@ -31,26 +57,36 @@
                 return false;
             };
 
-            if (window["WebSocket"]) {
-                conn = new WebSocket("ws://" + document.location.host + "/ws");
-                conn.onclose = function (evt) {
-                    var item = document.createElement("div");
-                    item.innerHTML = "<b>Connection closed.</b>";
-                    appendLog(item);
-                };
-                conn.onmessage = function (evt) {
-                    var messages = evt.data.split('\n');
-                    for (var i = 0; i < messages.length; i++) {
+            var intervalId;
+
+            function checkWebSocket() {
+                if (user !== "") {
+                    if (window["WebSocket"]) {
+                        conn = new WebSocket("ws://" + document.location.host + "/ws/" + user);
+                        conn.onclose = function (evt) {
+                            var item = document.createElement("div");
+                            item.innerHTML = "<b>Connection closed.</b>";
+                            appendLog(item);
+                        };
+                        conn.onmessage = function (evt) {
+                            console.log(evt.data);
+                            var messages = evt.data.split('\n');
+                            for (var i = 0; i < messages.length; i++) {
+                                var item = document.createElement("div");
+                                item.innerText = messages[i];
+                                appendLog(item);
+                            }
+                        };
+                        clearInterval(intervalId); // Clear the interval
+                    } else {
                         var item = document.createElement("div");
-                        item.innerText = messages[i];
+                        item.innerHTML = "<b>Your browser does not support WebSockets.</b>";
                         appendLog(item);
                     }
-                };
-            } else {
-                var item = document.createElement("div");
-                item.innerHTML = "<b>Your browser does not support WebSockets.</b>";
-                appendLog(item);
+                }
             }
+
+            intervalId = setInterval(checkWebSocket, 1000);
         };
     </script>
     <style type="text/css">
@@ -88,15 +124,36 @@
             width: 100%;
             overflow: hidden;
         }
+
+        .flex {
+            display: flex;
+        }
+
+        .justify-center {
+            justify-content: center;
+        }
+
+        .items-center {
+            align-items: center;
+        }
     </style>
 </head>
 
 <body>
-    <div id="log"></div>
-    <form id="form">
-        <input type="submit" value="Send" />
-        <input type="text" id="msg" size="64" autofocus autocomplete="off" />
-    </form>
+    <div id="login" class="flex justify-center items-center">
+
+        <input type="text" name="username" id="username" placeholder="Username" />
+        <button type="submit" onclick="handleLogin()">Login</button>
+
+    </div>
+
+    <div id="chat">
+        <div id="log"></div>
+        <form id="form">
+            <input type="submit" value="Send" />
+            <input type="text" id="msg" size="64" autofocus autocomplete="off" />
+        </form>
+    </div>
 </body>
 
 </html>

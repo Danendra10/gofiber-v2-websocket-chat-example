@@ -23,15 +23,15 @@ func main() {
 
 	go runHub()
 
-	app.Get("/ws", websocket.New(func(c *websocket.Conn) {
-		// When the function returns, unregister the client and close the connection
+	app.Get("/ws/:username", websocket.New(func(c *websocket.Conn) {
+		username := c.Params("username")
+
 		defer func() {
 			unregister <- c
 			c.Close()
 		}()
 
-		// Register the client
-		register <- c
+		register <- client{Conn: c, Name: username}
 
 		for {
 			messageType, message, err := c.ReadMessage()
@@ -40,12 +40,11 @@ func main() {
 					log.Println("read error:", err)
 				}
 
-				return // Calls the deferred function, i.e. closes the connection on error
+				return
 			}
 
 			if messageType == websocket.TextMessage {
-				// Broadcast the received message
-				broadcast <- string(message)
+				broadcast <- messageData{Username: username, Message: string(message)}
 			} else {
 				log.Println("websocket message received of type", messageType)
 			}
@@ -57,27 +56,33 @@ func main() {
 	app.Listen(*port)
 }
 
-type client struct{} // Add more data to this type if needed
+type client struct {
+	Conn *websocket.Conn
+	Name string
+}
 
-// Credit: https://github.com/jos-/gofiber-websocket-chat-example
-var clients = make(map[*websocket.Conn]client) // Note: although large maps with pointer-like types (e.g. strings) as keys are slow, using pointers themselves as keys is acceptable and fast
-var register = make(chan *websocket.Conn)
-var broadcast = make(chan string)
+type messageData struct {
+	Username string
+	Message  string
+}
+
+var clients = make(map[*websocket.Conn]client)
+var register = make(chan client)
+var broadcast = make(chan messageData)
 var unregister = make(chan *websocket.Conn)
 
 func runHub() {
 	for {
 		select {
 		case connection := <-register:
-			clients[connection] = client{}
+			clients[connection.Conn] = connection
 			log.Println("connection registered")
 
 		case message := <-broadcast:
-			log.Println("message received:", message)
+			log.Println("message received:", message.Message)
 
-			// Send the message to all clients
 			for connection := range clients {
-				if err := connection.WriteMessage(websocket.TextMessage, []byte(message)); err != nil {
+				if err := connection.WriteMessage(websocket.TextMessage, []byte(message.Username+": "+message.Message)); err != nil {
 					log.Println("write error:", err)
 
 					unregister <- connection
@@ -87,9 +92,7 @@ func runHub() {
 			}
 
 		case connection := <-unregister:
-			// Remove the client from the hub
 			delete(clients, connection)
-
 			log.Println("connection unregistered")
 		}
 	}
